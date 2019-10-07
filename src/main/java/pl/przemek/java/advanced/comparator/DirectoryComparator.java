@@ -1,16 +1,19 @@
 package pl.przemek.java.advanced.comparator;
 
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.lang3.tuple.Pair;
+import pl.przemek.java.advanced.comparator.difference.DifferentSums;
 import pl.przemek.java.advanced.comparator.difference.FileDifference;
+import pl.przemek.java.advanced.comparator.difference.LackOfFile;
 
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -22,16 +25,15 @@ public class DirectoryComparator {
     public static final int BUFFER_SIZE = 100 * MEGA_BYTE;
     public static final int TIMEOUT_PER_RESULT_IN_SECONDS = 60;
 
-    public static List<FileDifference> compareDirs(Path dir1, Path dir2, ExecutorService executorService) throws Exception{
+    private DirectoryComparator() {}
+
+    public static List<FileDifference> compareDirs(Path dir1, Path dir2, ExecutorService executorService) throws Exception {
         var firstDirChecksumsF = computeForFilesInDirectory(dir1, executorService);
         var secondDirChecksumsF = computeForFilesInDirectory(dir2, executorService);
         var firstDirChecksums = waitAndCollectToMap(firstDirChecksumsF);
         var secondDirChecksums = waitAndCollectToMap(secondDirChecksumsF);
-        
-        return findFileDifferences(firstDirChecksums, secondDirChecksums);
-    }
 
-    private static List<FileDifference> findFileDifferences(Map<Path, String> firstDirChecksums, Map<Path, String> secondDirChecksums) {
+        return findFileDifferences(firstDirChecksums, secondDirChecksums);
     }
 
     private static List<Future<Pair<Path, String>>> computeForFilesInDirectory(Path root, ExecutorService executorService) {
@@ -77,5 +79,34 @@ public class DirectoryComparator {
             results.add(future.get(TIMEOUT_PER_RESULT_IN_SECONDS, TimeUnit.SECONDS));
         }
         return results.stream().collect(Collectors.toMap(Pair::getLeft, Pair::getRight));
+    }
+
+    private static List<FileDifference> findFileDifferences(Map<Path, String> firstDirChecksums, Map<Path, String> secondDirChecksums) {
+
+        Set<Path> firstDirFiles = firstDirChecksums.keySet();
+        Set<Path> secondDirFiles = secondDirChecksums.keySet();
+
+        List<DifferentSums> differentFiles = Sets.intersection(firstDirFiles, secondDirFiles)
+                .stream()
+                .flatMap(path -> checkSums(path, firstDirChecksums, secondDirChecksums).stream())
+                .collect(Collectors.toList());
+
+        List<LackOfFile> lackingFiles = Sets.symmetricDifference(firstDirFiles, secondDirFiles)
+                .stream()
+                .map(file -> new LackOfFile(file, !firstDirFiles.contains(file)))
+                .collect(Collectors.toList());
+
+        return Lists.newArrayList(Iterables.concat(differentFiles, lackingFiles));
+    }
+
+    private static Optional<DifferentSums> checkSums(Path file, Map<Path, String> firstDirChecksums, Map<Path, String> secondDirChecksums) {
+
+        String firstSum = firstDirChecksums.get(file);
+        String secondSum = secondDirChecksums.get(file);
+        if (!firstSum.equals(secondSum)) {
+            return Optional.of(new DifferentSums(file, firstSum, secondSum));
+        } else {
+            return Optional.empty();
+        }
     }
 }
