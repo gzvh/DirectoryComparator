@@ -8,7 +8,7 @@ import java.util.concurrent.Executors;
 
 public class App {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
 
         ExecutorService executorService = Executors.newFixedThreadPool(7);
 

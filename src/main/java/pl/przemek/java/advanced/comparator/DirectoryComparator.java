@@ -37,14 +37,13 @@ public class DirectoryComparator {
     }
 
     private static List<Future<Pair<Path, String>>> computeForFilesInDirectory(Path root, ExecutorService executorService) {
-        getAllRegularFiles(root)
+        return getAllRegularFiles(root)
                 .stream()
                 .map(path -> executorService.submit(() -> {
                     byte[] bytes = DirectoryComparator.computeFileMD5(path);
                     return Pair.of(root.relativize(path), Hex.encodeHexString(bytes));
                 }))
                 .collect(Collectors.toList());
-        return null;
     }
 
     private static List<Path> getAllRegularFiles(Path root) {
